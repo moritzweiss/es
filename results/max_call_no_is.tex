@@ -1,0 +1,13 @@
+\begin{table}[ht]
+\centering
+\begin{tabular}{lccccc}
+\toprule
+ & $\mathrm{ES}_{\alpha}(\hat{f}(X))$ & $\frac{\|\hat f - \bar f\|_{L^2(\nu)}}{\mathrm{ES}_{\alpha}(\hat{f}(X))}$ & $\frac{\|\hat f - \bar f\|_{L^2(\hat \nu_\alpha)}}{\mathrm{ES}_{\alpha}(\hat{f}(X))}$ & $\frac{\|\hat f - \bar f\|_{L^2(\nu)}}{\|\bar f\|_{L^2(\nu)}}$ & $\frac{\|\hat f - \bar f\|_{L^2(\hat \nu_\alpha)}}{\|\bar f\|_{L^2(\hat \nu_\alpha)}}$ \\
+\midrule
+Linear & 2.6811 & 0.0327 & -0.0732 & 0.0547 & -0.1227 \\
+Poly & 2.7467 & 0.0272 & -0.0986 & 0.0467 & -0.1692 \\
+NN & 2.8420 & 0.0153 & -0.1169 & 0.0272 & -0.2076 \\
+\bottomrule
+\end{tabular}
+\caption{max call without importance sampling.}
+\end{table}

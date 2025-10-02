@@ -1,0 +1,64 @@
+<!doctype html>
+    <html lang="en">
+    <head>
+    <meta charset="utf-8">
+    <title>max_call_no_is</title>
+    <style>
+        body{font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding: 1rem 2rem;}
+        table{border-collapse: collapse; width: 100%;}
+        th, td{border: 1px solid #ddd; padding: 0.5rem; text-align: center;}
+        th{background: #f6f6f6;}
+        caption{caption-side: bottom; padding-top: .5rem; font-style: italic;}
+    </style>
+    <script>
+        window.MathJax = {
+        tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+        svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async
+            src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    </head>
+    <body>
+    <h2>max_call_no_is</h2>
+    <table><caption>max call without importance sampling.</caption> border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>$\mathrm{ES}_{\alpha}(\hat{f}(X))$</th>
+      <th>$\frac{\|\hat f - \bar f\|_{L^2(\nu)}}{\mathrm{ES}_{\alpha}(\hat{f}(X))}$</th>
+      <th>$\frac{\|\hat f - \bar f\|_{L^2(\hat \nu_\alpha)}}{\mathrm{ES}_{\alpha}(\hat{f}(X))}$</th>
+      <th>$\frac{\|\hat f - \bar f\|_{L^2(\nu)}}{\|\bar f\|_{L^2(\nu)}}$</th>
+      <th>$\frac{\|\hat f - \bar f\|_{L^2(\hat \nu_\alpha)}}{\|\bar f\|_{L^2(\hat \nu_\alpha)}}$</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Linear</th>
+      <td>2.6811</td>
+      <td>0.0327</td>
+      <td>-0.0732</td>
+      <td>0.0547</td>
+      <td>-0.1227</td>
+    </tr>
+    <tr>
+      <th>Poly</th>
+      <td>2.7467</td>
+      <td>0.0272</td>
+      <td>-0.0986</td>
+      <td>0.0467</td>
+      <td>-0.1692</td>
+    </tr>
+    <tr>
+      <th>NN</th>
+      <td>2.8420</td>
+      <td>0.0153</td>
+      <td>-0.1169</td>
+      <td>0.0272</td>
+      <td>-0.2076</td>
+    </tr>
+  </tbody>
+</table>
+    </body>
+    </html>
+    
