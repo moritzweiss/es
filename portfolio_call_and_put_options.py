@@ -114,6 +114,7 @@ class DeepNeuralNet(nn.Module):
     def __init__(self, n_features=20, hidden_layer=128):
         super().__init__()
         self.net = nn.Sequential(
+            # big gain from using wider neural network with two hidden layers ! 
             nn.Linear(n_features, hidden_layer),
             nn.BatchNorm1d(hidden_layer),
             nn.GELU(),

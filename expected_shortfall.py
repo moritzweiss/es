@@ -36,6 +36,8 @@ def expected_shortfall(
         assert torch.all(sample_weights>=0), "weights must be positive"        
         if normalization:
             sample_weights = sample_weights / sample_weights.sum()
+        else:
+            assert torch.isclose(sample_weights.sum(), torch.tensor(1.0, dtype=sample_weights.dtype, device=sample_weights.device), rtol=1e-2), "weights must not sum to one"
     if not is_decreasing:
         losses, idx = torch.sort(losses, dim=-1, descending=True)
         sample_weights = torch.gather(input=sample_weights,dim=0,index=idx)
