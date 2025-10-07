@@ -36,7 +36,7 @@ def estimates(predictions: torch.Tensor, y: torch.Tensor, z: torch.Tensor, sampl
     predictions = predictions[idx]
     if sampling_weights is not None:
         sampling_weights = sampling_weights[idx]
-    es, j = expected_shortfall(losses=predictions, alpha=alpha, sample_weights=sampling_weights, normalization=False, is_decreasing=True)
+    es, j = expected_shortfall(losses=predictions, alpha=alpha, sample_weights=sampling_weights, normalize=False, make_decreasing=True)
     norm_diff_nu, norm_true_nu = norm_estimate(predictions, y, z, j, alpha, sampling_weights, tail_estimate=False)
     norm_diff_tail, norm_true_tail = norm_estimate(predictions, y, z, j, alpha, sampling_weights, tail_estimate=True)
     # TODO: confidence bounds 
