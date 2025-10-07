@@ -19,6 +19,8 @@ class PortfolioConfig:
     intermediate_time: float = 1/52
     initial_value: float = 100.0
     corr: float = 0.30
+    # no correlation to test IS sampling better 
+    # corr: float = 0.0
     n_assets : int = 20
     drift: List[float] = field(default_factory=lambda: [(2.5 + ((i % 10 + 1) / 2)) / 100 for i in range(20)])
     vola: List[float] = field(default_factory=lambda: [(14 + (i % 10 + 1)) / 100 for i in range(20)])
@@ -142,7 +144,6 @@ class DataSampler():
             return torch.relu(torch.max(Y, dim=1)[0] - self.strike).flatten()
         else:
             raise ValueError("unknown config name")
-
     
 class DeepNeuralNet(nn.Module):
     # network architecture has an effect on the results 
@@ -232,7 +233,7 @@ class Regression():
         self.transform_on_compute_device = True
 
     def transform(self, X):
-        # the transformation is faster on GPU. but need more memory for this. can check other adas. 
+        # the transformation is faster on GPU. but need more memory for this. we can check other adas. 
         if self.transform_on_compute_device:
             X = X.to(self.compute_device)
         if self.poly:
@@ -268,11 +269,48 @@ class Regression():
     def __call__(self, X):
         return self.predict(X)
 
+def evaluation_samples(DS, model, eval_seed, eval_samples, alpha, importance_sampling, on_cpu=False):
+    samples_per_batch = int(1e6)
+    n_batches = int(eval_samples/samples_per_batch)
+    DS.set_seed(eval_seed)
+    all_X = []
+    all_Y = []
+    all_Z = []
+    all_outputs = []
+    all_sampling_weights = []
+    for _ in range(n_batches):
+        X, sampling_weights = DS.sampleX(importance_sampling=importance_sampling, alpha=alpha, n_samples=samples_per_batch)
+        outputs = model(X)
+        Y = DS.sampleY(initial_value=X)
+        Z = DS.sampleY(initial_value=X)        
+        if on_cpu:
+            X, Y = X.detach().cpu(), Y.detach().cpu()
+            Z, sampling_weights = Z.detach().cpu(), sampling_weights.detach().cpu()
+            outputs = outputs.detach().cpu()
+        all_X.append(X)
+        all_Y.append(Y)
+        all_Z.append(Z)
+        all_outputs.append(outputs)
+        all_sampling_weights.append(sampling_weights)
+    all_X = torch.cat(all_X, dim=0)
+    all_Y = torch.cat(all_Y, dim=0)
+    all_Z = torch.cat(all_Z, dim=0)
+    all_sampling_weights = torch.cat(all_sampling_weights, dim=0)
+    # normalize sampling weights 
+    all_sampling_weights = all_sampling_weights / all_sampling_weights.sum()
+    all_outputs = torch.cat(all_outputs, dim=0)
+    # Sort all arrays in descending order of predictions
+    sort_idx = torch.argsort(all_outputs, descending=True)
+    all_X = all_X[sort_idx]
+    all_Y = all_Y[sort_idx]
+    all_Z = all_Z[sort_idx]
+    all_outputs = all_outputs[sort_idx]
+    all_sampling_weights = all_sampling_weights[sort_idx]
+    return all_X, all_Y, all_Z, all_outputs, all_sampling_weights
 
 if __name__ == "__main__":
     import random
     
-    # Set global random seeds for reproducibility
     torch.manual_seed(42)
     np.random.seed(42)
     random.seed(42)
@@ -280,12 +318,8 @@ if __name__ == "__main__":
         torch.cuda.manual_seed(42)
         torch.cuda.manual_seed_all(42)
     
-    # import sys
-    # Choose configuration based on command line argument or default to max_call
-    # experiment_type = sys.argv[1] if len(sys.argv) > 1 else "max_call"
-
-    experiment_type = "max_call"  
-    # experiment_type = "portfolio"
+    # experiment_type = "max_call"  
+    experiment_type = "portfolio"
     
     if experiment_type == "portfolio":
         config = PortfolioConfig()
@@ -298,17 +332,17 @@ if __name__ == "__main__":
     eval_seed = 100
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cuda:0" if torch.cuda.is_available() else "cpu")
     dtype = torch.float32
-    eval_samples = int(1e6)
+    eval_samples = int(2e6)
     # eval_samples = int(5e5)
     importance_sampling = True
 
     # alpha = 0.95
     alpha = 0.99
-    sampling_alpha = 0.99
+    sampling_alpha = 0.8
 
     # for naming 
     name = f"with_is_{sampling_alpha}" if importance_sampling else "no_is"
-    name = f"{config.name}_{name}"
+    name = f"{experiment_type}_{name}"
     
     print(f"Running experiment: {config.name}")
     DS = DataSampler(config=config, device=device, dtype=dtype, seed=train_seed)
@@ -333,13 +367,16 @@ if __name__ == "__main__":
             torch.manual_seed(train_seed)
             if torch.cuda.is_available():   
                 torch.cuda.manual_seed(train_seed)
+                torch.cuda.manual_seed_all(train_seed)
                 
             if experiment_type == "max_call":
                 gradient_steps = int(1e3)
                 # gradient_steps = 2
-            else:
+            elif experiment_type == "portfolio":
                 # portfolio of puts and calls
                 gradient_steps = int(2e3)
+            else:
+                raise ValueError("unknown experiment type")
             batch_size = int(2**19)
             learning_rate = 1e-3
             # smaller network for portfolio
@@ -353,11 +390,9 @@ if __name__ == "__main__":
             for epoch in range(gradient_steps):
                 X, weights = DS.sampleX(importance_sampling=importance_sampling, alpha=sampling_alpha, n_samples=batch_size)
                 Y = DS.sampleY(initial_value=X)
-                outputs = model(X)
-                outputs = outputs.flatten()
-                loss = criterion(outputs, Y)
-                # weights = weights / weights.sum()
-                # loss = (weights * (outputs - Y) ** 2).sum()
+                predictions = model(X)
+                predictions = predictions.flatten()
+                loss = criterion(predictions, Y)
                 optimizer.zero_grad()  
                 loss.backward()
                 optimizer.step()
@@ -389,52 +424,27 @@ if __name__ == "__main__":
         print(f"evaluating {model_name}")        
         model.eval() if model_name == "NN" else None
 
-        # for now its probably better to do the entire evaluation without importance sampling 
-        # easier to see whether IS is working 
 
-        # eval with importance sampling for tail estimates
-        DS.set_seed(eval_seed)
-        X, sampling_weights = DS.sampleX(importance_sampling=True, alpha=sampling_alpha, n_samples=eval_samples)
-        outputs = model(X)
-        sampling_weights = sampling_weights / sampling_weights.sum()
-        Y = DS.sampleY(initial_value=X)
-        Z = DS.sampleY(initial_value=X)
-        
-        # Sort for proper ES and tail computation
-        idx = torch.argsort(outputs, descending=True)
-        Y = Y[idx]
-        Z = Z[idx]
-        outputs = outputs[idx]
-        sampling_weights = sampling_weights[idx]
+        # eval with importance sampling for norm tail estimates and for expected shortfall
+        # can choose alpha or sampling_alpha to collect the samples 
+        X, Y, Z, predictions, sampling_weights = evaluation_samples(DS=DS, model=model, eval_seed=eval_seed, eval_samples=eval_samples, alpha=alpha, importance_sampling=True, on_cpu=True)
+        es, j = expected_shortfall(losses=predictions, sample_weights=sampling_weights, alpha=alpha, normalize=False, make_decreasing=False)
+        diff_nu_tail, true_f_tail = norm_estimate(predictions, Y, Z, j, alpha, sampling_weights, tail_estimate=True)
 
-        es, j = expected_shortfall(outputs, alpha=alpha, sample_weights=sampling_weights, is_decreasing=True)
-        diff_nu_tail, true_f_tail = norm_estimate(outputs, Y, Z, j, alpha, sampling_weights, tail_estimate=True)
-
+        # clear memory 
         X = X.detach()
         Y = Y.detach()
         Z = Z.detach()
-        outputs = outputs.detach()
+        predictions = predictions.detach()
         sampling_weights = sampling_weights.detach()
         del X, Y, Z, sampling_weights
         torch.cuda.empty_cache()
         print("alloc:", torch.cuda.memory_allocated()/1e6, "MB")
         print("reserved:", torch.cuda.memory_reserved()/1e6, "MB")
 
-        # eval without importance sampling for regular non tail estimates  
-        DS.set_seed(eval_seed)
-        X, sampling_weights = DS.sampleX(importance_sampling=False, n_samples=eval_samples, alpha=sampling_alpha)
-        outputs = model(X)
-        sampling_weights = sampling_weights / sampling_weights.sum()
-        Y = DS.sampleY(initial_value=X)
-        Z = DS.sampleY(initial_value=X)
-        # Sort for proper computation
-        idx = torch.argsort(outputs, descending=True)
-        Y = Y[idx]
-        Z = Z[idx]
-        outputs = outputs[idx]
-        sampling_weights = sampling_weights[idx]
-        # 
-        diff_nu, true_f = norm_estimate(outputs, Y, Z, None, alpha, sampling_weights, tail_estimate=False)
+          # eval without importance sampling for regular norm estimate (not in the tail)
+        X, Y, Z, predictions, sampling_weights = evaluation_samples(DS=DS, model=model, eval_seed=eval_seed, eval_samples=eval_samples, alpha=alpha, importance_sampling=False, on_cpu=True) 
+        diff_nu, true_f = norm_estimate(predictions, Y, Z, None, alpha, sampling_weights, tail_estimate=False)
 
         results.append({
                 "model": model_name,
@@ -457,10 +467,13 @@ if __name__ == "__main__":
                 "diff_tail/true_f_tail": r"$\frac{\|\hat f - \bar f\|_{L^2(\hat \nu_\alpha)}}{\|\bar f\|_{L^2(\hat \nu_\alpha)}}$"} 
     df = df.rename(columns=to_latex)
     colfmt = "l" + "c" * len(df.columns) 
+    
+    # removing under scors 
+    label = "portfolio" if experiment_type == "portfolio" else "max call"   
     if importance_sampling:
-        caption = f"{config.name} with importance sampling."
+        caption = f"{label} with importance sampling."
     else:
-        caption = f"{config.name} without importance sampling."
+        caption = f"{label} without importance sampling."
     latex_str = df.to_latex(float_format="%.4f", escape=False, index_names=False, column_format=colfmt)            
     # add centering to the table 
     latex_str = ("\\begin{table}[ht]\n"
