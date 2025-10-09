@@ -185,37 +185,6 @@ class DeepNeuralNet(nn.Module):
     def forward(self, x):
         return self.net(x).flatten()
 
-class PolynomialNet(nn.Module):
-    def __init__(self, n_features, mean, std):
-        super().__init__()
-        self.n_input_features = n_features
-        self.n_out_features = int(n_features+(n_features*(n_features+1))/2)
-        self.linear = nn.Linear(self.n_out_features, 1, bias=True)
-        self.mean = mean
-        self.std = std
-
-    def forward(self, x):
-        assert x.dim() == 2
-        assert x.shape[1] == self.n_input_features
-        batch_size = x.shape[0]
-        iu = torch.triu_indices(self.n_input_features, self.n_input_features, offset=0, device=x.device)
-        x_norm = (x-self.mean)/self.std
-        pairs = x_norm.unsqueeze(2) * x_norm.unsqueeze(1)  
-        quad_features = pairs[:, iu[0], iu[1]]  
-        all_features = torch.cat([x, quad_features], dim=1)  
-        assert all_features.shape == (batch_size, self.n_out_features)
-        return self.linear(all_features)
-
-class Transform():
-    def __init__(self, mean, std):
-        self.mean = mean
-        self.std = std
-
-    def normalize(self, X):
-        return (X - self.mean) / self.std
-    
-    def unnormalize(self, X):
-        return X * self.std + self.mean
 
 class Regression():
     ''''
@@ -333,22 +302,17 @@ if __name__ == "__main__":
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cuda:0" if torch.cuda.is_available() else "cpu")
     dtype = torch.float32
     eval_samples = int(2e6)
-    # eval_samples = int(5e5)
     importance_sampling = True
 
-    # alpha = 0.95
     alpha = 0.99
     sampling_alpha = 0.8
 
-    # for naming 
     name = f"with_is_{sampling_alpha}" if importance_sampling else "no_is"
     name = f"{experiment_type}_{name}"
     
     print(f"Running experiment: {config.name}")
     DS = DataSampler(config=config, device=device, dtype=dtype, seed=train_seed)
-    X, _ = DS.sampleX(importance_sampling=importance_sampling, alpha=sampling_alpha, n_samples=int(1e5))
-    Y = DS.sampleY(initial_value=X)
-    TR = Transform(mean=torch.mean(Y), std=torch.std(Y))
+    
 
     # training loop                    
     for model_name in model_names:
