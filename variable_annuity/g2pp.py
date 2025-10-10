@@ -5,8 +5,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 @dataclass
-class AnnuityConfig:
-    name: str = "annuity"
+class InterestRateConfig:
+    name: str = "g2pp"
     # for processes x and y 
     alpha: float = 0.39
     beta: float = 0.0785
@@ -111,7 +111,7 @@ class G2PPModel:
 
 
 if __name__ == "__main__":
-    config = AnnuityConfig()
+    config = InterestRateConfig()
     device = 'cpu'
     dtype = torch.float32
     n_samples = int(1e4) 
@@ -143,3 +143,17 @@ if __name__ == "__main__":
     plt.xlim(0, n_steps-1)
     plt.title('Sample paths of interest rate')
     plt.savefig('g2pp_sample_paths.png')
+    plt.figure()
+    plt.plot(x[0:10, :].cpu().numpy().T)
+    plt.xlabel('Time step')
+    plt.ylabel('Process x')
+    plt.xlim(0, n_steps-1)
+    plt.title('Sample paths of process x')
+    plt.savefig('g2pp_process_x_sample_paths.png')
+    plt.figure()
+    plt.plot(y[0:10, :].cpu().numpy().T)
+    plt.xlabel('Time step')         
+    plt.ylabel('Process y')
+    plt.xlim(0, n_steps-1)
+    plt.title('Sample paths of process y')
+    plt.savefig('g2pp_process_y_sample_paths.png')
