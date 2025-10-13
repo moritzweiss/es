@@ -1,7 +1,7 @@
 import torch 
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, field 
 from pathlib import Path
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -10,15 +10,25 @@ parent_dir = Path(__file__).parent
 @dataclass
 class MortalityConfig:
     name: str = "mortality"
-    gamma: float = -2.0014
-    c: float = -0.062
+    gamma: float = -0.00022
+    c: float = -0.0620
     d: float = 0.9825
     sigma_K: float = 2.4180
     sigma_k: float = 1.2720
     multi_pop = pd.read_csv(parent_dir/"multi_pop_k.txt", sep='\t')
-    # take equilibrium value here 
+    # take the  equilibrium start value here 
     k_start: float = (c/(1 - d))
     K_start: float = multi_pop['K.t'].mean()
+    # 
+    multi_pop : pd.DataFrame = field(default_factory=lambda: pd.read_csv(parent_dir/"multi_pop.txt", sep='\t'))
+    # multi_pop = pd.read_csv(parent_dir/"multi_pop.txt", sep='\t')
+    a : np.ndarray = field(default_factory=lambda: multi_pop['a.x'].values)
+    b : np.ndarray = field(default_factory=lambda: multi_pop['b.x'].values)
+    A : np.ndarray = field(default_factory=lambda: multi_pop['A.x'].values)
+    B : np.ndarray = field(default_factory=lambda: multi_pop['B.x'].values)
+    # starts ate age 1
+    age : np.ndarray = field(default_factory=lambda: multi_pop['x'].values)
+    
 
 def to_tensor(value, device, dtype):
     if isinstance(value, float): 
@@ -40,44 +50,71 @@ class MortalityModel:
             value = getattr(config, f.name)
             value = to_tensor(value, device=self.device, dtype=self.dtype)
             setattr(self, f.name, value)
-        self.k_equilibrium = self.c / (1 - self.d)
     
-    def simulate(self, start_k, start_K, t, n_samples):
-        # simulate t steps from start point 
+    def simulate(self, start_k, start_K, t, n_samples, age):
         assert t >= 0, "Time t must be non-negative"
+        # simulate to the t-th time step from the start point 
+        # age starts at 1. index=0 means age 1. idx = age - 1
+        idx = age - 1
+        a = self.a[idx]
+        b = self.b[idx]
+        A = self.A[idx]
+        B = self.B[idx]
         if t == 0:
-            return start_k.repeat(n_samples), start_K.repeat(n_samples)
+            k = start_k.repeat(n_samples)
+            K = start_K.repeat(n_samples)
+            # reading mortality parameters from multi pop 
+            m = torch.exp(a + b * k + A + B * K)
+            return start_k.repeat(n_samples), start_K.repeat(n_samples), m 
         else:
             # simulate k_t
-            mean_k = self.c/(1 - self.d) + (self.d**t)*(start_k - self.c/(1 - self.d))
+            mean_k = self.c/(1 - self.d) + (self.d**t)*(self.k_start - self.c/(1 - self.d))
             var_k = (self.sigma_k**2) * (1 - (self.d**(2*t))) / (1 - self.d**2)
             normal_draws = torch.randn(n_samples, generator=self.rng)
-            k_t = mean_k + torch.sqrt(var_k) * normal_draws            
+            k = mean_k + torch.sqrt(var_k) * normal_draws            
             # simulate K_t
             mean_K = self.gamma * t + start_K
             var_K = (self.sigma_K**2) * t
             normal_draws_K = torch.randn(n_samples, generator=self.rng)
-            K_t = mean_K + torch.sqrt(var_K) * normal_draws_K
-            return k_t, K_t 
-    
-    def simulate_steps(self, start_k, start_K, t, n_samples):
+            K = mean_K + torch.sqrt(var_K) * normal_draws_K
+            #
+        m = torch.exp(a + b * k + A + B * K)
+        return k, K, m
+
+    def simulate_steps(self, start_k, start_K, t, n_samples, age):
+        assert age >= 1, "Age must be at least 1"
         # simulate t steps from start point 
         assert t >= 0, "Time t must be non-negative"
-        k_list = [torch.tensor(start_k, device=self.device, dtype=self.dtype).expand(n_samples, )]
-        K_list = [torch.tensor(start_K, device=self.device, dtype=self.dtype).expand(n_samples, )]
-        k = k_list[-1]
-        K = K_list[-1]
+        start_k = torch.tensor(start_k, device=self.device, dtype=self.dtype).expand(n_samples, )
+        start_K = torch.tensor(start_K, device=self.device, dtype=self.dtype).expand(n_samples, )
+        idx = age - 1
+        m = torch.exp(self.a[idx] + self.b[idx] * start_k + self.A[idx] + self.B[idx] * start_K)
+        K_list = [start_K]
+        k_list = [start_k]
+        m_list = [m]
         for _ in range(t):
-            k, K = self.simulate(start_K=K, start_k=k, t=1, n_samples=n_samples)
+            idx = age - 1
+            a = self.a[idx]
+            b = self.b[idx]
+            A = self.A[idx]
+            B = self.B[idx]
+            k, K = self.simulate(start_K=start_K, start_k=start_k, t=1, n_samples=n_samples, age=65)[:2]
+            m = torch.exp(a + b * k + A + B * K)
             k_list.append(k)
             K_list.append(K)
-        return torch.stack(k_list, dim=1), torch.stack(K_list, dim=1)
-
+            m_list.append(m)
+            age += 1            
+        return torch.stack(k_list, dim=1), torch.stack(K_list, dim=1), torch.stack(m_list, dim=1)
+    
 
 if __name__ == "__main__":
+    multi_pop = pd.read_csv(parent_dir/"multi_pop.txt", sep='\t')
+    print(multi_pop.head())
+    print(multi_pop.tail())
     MC = MortalityConfig()
     model = MortalityModel(MC, device='cpu')
-    k_t, K_t = model.simulate(MC.k_start, MC.K_start,t=10, n_samples=1000)
+    k_t, K_t, m_t = model.simulate(MC.k_start, MC.K_start,t=10, n_samples=1000, age=65)
+    print(m_t)
     plt.figure(figsize=(10,6))
     sns.histplot(k_t.cpu().numpy(), kde=True, bins=30, color='blue', label='k_t')
     sns.histplot(K_t.cpu().numpy(), kde=True, bins=30, color='orange', label='K_t')
@@ -86,20 +123,38 @@ if __name__ == "__main__":
     plt.ylabel('Frequency')
     plt.title('Histogram of k_t and K_t')
     plt.savefig('k_t_K_t.png')
-    # new simulation steps 
-    k, K = model.simulate_steps(MC.k_start, MC.K_start, t=100, n_samples=10)
+    # histogram of mortality rates
+    plt.figure(figsize=(10,6))
+    sns.histplot(m_t.cpu().numpy(), kde=True, bins=30, color='green', label='m_t')
+    plt.legend()
+    plt.xlabel('Mortality Rate')
+    plt.ylabel('Frequency')
+    plt.title('Histogram of Mortality Rates')
+    plt.savefig('m_t.png')
+
+    ## 
+    age = 1
+    time_steps = 10
+    k, K, m = model.simulate_steps(MC.k_start, MC.K_start, t=time_steps, n_samples=10, age=age)
     print(k.shape, K.shape)
     plt.figure(figsize=(10,6))
-    for i in range(10): 
-        if i == 0:
-            plt.plot(k[i].cpu().numpy(), label='k', color='blue')
-            plt.plot(K[i].cpu().numpy(), label='K', color='orange')
-        else:
-            plt.plot(k[i].cpu().numpy(), color='blue')
-            plt.plot(K[i].cpu().numpy(), linestyle='--', color='orange')            
+    for i in range(10):
+        plt.plot(k[i].cpu().numpy(), label=f'k')
+        plt.plot(K[i].cpu().numpy(), label=f'K', linestyle='--')
     plt.xlabel('Time')
     plt.ylabel('Value')
-    plt.xlim(0, 100)
     plt.title('Simulated Paths of k and K')
-    plt.legend()
+    # plt.legend()
     plt.savefig('k_K_paths.png')
+    # mortality paths
+    plt.figure(figsize=(10,6))
+    for i in range(10):
+        plt.plot(m[i].cpu().numpy(), label=f'm', color='green')
+    plt.xlabel('Time')
+    plt.ylabel('Mortality Rate')
+    plt.title('Simulated Paths of Mortality Rates')
+    # x_tick_labels = [age + i for i in range(time_steps + 1)]
+    plt.xticks(ticks=range(0, time_steps + 1, 5),labels=[age + i for i in range(0, time_steps + 1, 5)])
+    plt.xlim(0, time_steps)
+    # plt.legend()
+    plt.savefig('mortality_paths.png')
