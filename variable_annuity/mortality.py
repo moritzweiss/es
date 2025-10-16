@@ -20,14 +20,19 @@ class MortalityConfig:
     k_start: float = (c/(1 - d))
     K_start: float = multi_pop['K.t'].mean()
     # 
-    multi_pop : pd.DataFrame = field(default_factory=lambda: pd.read_csv(parent_dir/"multi_pop.txt", sep='\t'))
-    # multi_pop = pd.read_csv(parent_dir/"multi_pop.txt", sep='\t')
-    a : np.ndarray = field(default_factory=lambda: multi_pop['a.x'].values)
-    b : np.ndarray = field(default_factory=lambda: multi_pop['b.x'].values)
-    A : np.ndarray = field(default_factory=lambda: multi_pop['A.x'].values)
-    B : np.ndarray = field(default_factory=lambda: multi_pop['B.x'].values)
-    # starts ate age 1
-    age : np.ndarray = field(default_factory=lambda: multi_pop['x'].values)
+    multi_pop: pd.DataFrame = field(default_factory=lambda: pd.read_csv(parent_dir/"multi_pop.txt", sep='\t'))
+    a: np.ndarray = field(init=False)
+    b: np.ndarray = field(init=False)
+    A: np.ndarray = field(init=False)
+    B: np.ndarray = field(init=False)
+    age: np.ndarray = field(init=False)
+
+    def __post_init__(self):
+        self.a = self.multi_pop['a.x'].values
+        self.b = self.multi_pop['b.x'].values
+        self.A = self.multi_pop['A.x'].values
+        self.B = self.multi_pop['B.x'].values
+        self.age = self.multi_pop['x'].values
     
 
 def to_tensor(value, device, dtype):
@@ -45,11 +50,14 @@ class MortalityModel:
         self.device = device
         self.dtype = dtype
         self.config = config
-        self.rng = torch.Generator(device=device).manual_seed(seed)
+        self.rng = self.set_seed(seed)
         for f in fields(config):
             value = getattr(config, f.name)
             value = to_tensor(value, device=self.device, dtype=self.dtype)
             setattr(self, f.name, value)
+
+    def set_seed(self, seed):
+        self.rng = torch.Generator(device=self.device).manual_seed(seed)
     
     def simulate(self, start_k, start_K, t, n_samples, age):
         assert t >= 0, "Time t must be non-negative"
@@ -70,23 +78,24 @@ class MortalityModel:
             # simulate k_t
             mean_k = self.c/(1 - self.d) + (self.d**t)*(self.k_start - self.c/(1 - self.d))
             var_k = (self.sigma_k**2) * (1 - (self.d**(2*t))) / (1 - self.d**2)
-            normal_draws = torch.randn(n_samples, generator=self.rng)
+            normal_draws = torch.randn(n_samples, generator=self.rng, device=self.device, dtype=self.dtype)
             k = mean_k + torch.sqrt(var_k) * normal_draws            
             # simulate K_t
             mean_K = self.gamma * t + start_K
             var_K = (self.sigma_K**2) * t
-            normal_draws_K = torch.randn(n_samples, generator=self.rng)
+            normal_draws_K = torch.randn(n_samples, generator=self.rng, device=self.device, dtype=self.dtype)
             K = mean_K + torch.sqrt(var_K) * normal_draws_K
             #
         m = torch.exp(a + b * k + A + B * K)
         return k, K, m
 
     def simulate_steps(self, start_k, start_K, t, n_samples, age):
+        # we include the first step 
         assert age >= 1, "Age must be at least 1"
         # simulate t steps from start point 
         assert t >= 0, "Time t must be non-negative"
-        start_k = torch.tensor(start_k, device=self.device, dtype=self.dtype).expand(n_samples, )
-        start_K = torch.tensor(start_K, device=self.device, dtype=self.dtype).expand(n_samples, )
+        start_k = start_k.expand(n_samples, )
+        start_K = start_K.expand(n_samples, )
         idx = age - 1
         m = torch.exp(self.a[idx] + self.b[idx] * start_k + self.A[idx] + self.B[idx] * start_K)
         K_list = [start_K]
