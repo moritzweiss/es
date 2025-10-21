@@ -1,3 +1,5 @@
 results/
+results/*
 plots/
+plots/*
 __pycache__/
