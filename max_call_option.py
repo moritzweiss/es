@@ -287,8 +287,8 @@ if __name__ == "__main__":
         torch.cuda.manual_seed(42)
         torch.cuda.manual_seed_all(42)
     
-    # experiment_type = "max_call"  
-    experiment_type = "portfolio"
+    experiment_type = "max_call"  
+    # experiment_type = "portfolio"
     
     if experiment_type == "portfolio":
         config = PortfolioConfig()
@@ -296,6 +296,7 @@ if __name__ == "__main__":
         config = MaxCallConfig()
     
     model_names = ["Linear", "Poly", "NN"]
+    # model_names = ["Linear", "Poly"]
     results = []
     train_seed = 0
     eval_seed = 100
@@ -305,7 +306,8 @@ if __name__ == "__main__":
     importance_sampling = True
 
     alpha = 0.99
-    sampling_alpha = 0.8
+    # sampling_alpha = 0.7
+    sampling_alpha = 0.99
 
     name = f"with_is_{sampling_alpha}" if importance_sampling else "no_is"
     name = f"{experiment_type}_{name}"
@@ -391,9 +393,9 @@ if __name__ == "__main__":
 
         # eval with importance sampling for norm tail estimates and for expected shortfall
         # can choose alpha or sampling_alpha to collect the samples 
-        X, Y, Z, predictions, sampling_weights = evaluation_samples(DS=DS, model=model, eval_seed=eval_seed, eval_samples=eval_samples, alpha=alpha, importance_sampling=True, on_cpu=True)
+        X, Y, Z, predictions, sampling_weights = evaluation_samples(DS=DS, model=model, eval_seed=eval_seed, eval_samples=eval_samples, alpha=sampling_alpha, importance_sampling=importance_sampling, on_cpu=True)
         es, j = expected_shortfall(losses=predictions, sample_weights=sampling_weights, alpha=alpha, normalize=False, make_decreasing=False)
-        diff_nu_tail, true_f_tail = norm_estimate(predictions, Y, Z, j, alpha, sampling_weights, tail_estimate=True)
+        diff_nu_tail, true_f_tail, error_bound_tail = norm_estimate(predictions, Y, Z, j, alpha, sampling_weights, tail_estimate=True)
 
         # clear memory 
         X = X.detach()
@@ -407,14 +409,16 @@ if __name__ == "__main__":
         print("reserved:", torch.cuda.memory_reserved()/1e6, "MB")
 
           # eval without importance sampling for regular norm estimate (not in the tail)
-        X, Y, Z, predictions, sampling_weights = evaluation_samples(DS=DS, model=model, eval_seed=eval_seed, eval_samples=eval_samples, alpha=alpha, importance_sampling=False, on_cpu=True) 
-        diff_nu, true_f = norm_estimate(predictions, Y, Z, None, alpha, sampling_weights, tail_estimate=False)
+        X, Y, Z, predictions, sampling_weights = evaluation_samples(DS=DS, model=model, eval_seed=eval_seed, eval_samples=eval_samples, alpha=sampling_alpha, importance_sampling=importance_sampling, on_cpu=True) 
+        diff_nu, true_f, error_bound = norm_estimate(predictions, Y, Z, None, alpha, sampling_weights, tail_estimate=False)
 
         results.append({
                 "model": model_name,
                 "es": es.item(),
                 "diff_nu/es": (diff_nu/es).item(),
+                "diff_nu_cb/es": (error_bound/es).item(),
                 "diff_tail/es": (diff_nu_tail/es).item(),
+                "diff_tail_cb/es": (error_bound_tail/es).item(),
                 "diff_nu/true_f": (diff_nu/true_f).item(),
                 "diff_tail/true_f_tail": (diff_nu_tail/true_f_tail).item()})
     
@@ -427,23 +431,29 @@ if __name__ == "__main__":
     to_latex = {"es": r"$\mathrm{ES}_{\alpha}(\hat{f}(X))$",
                 "diff_nu/es": r"$\frac{\|\hat f - \bar f\|_{L^2(\nu)}}{\mathrm{ES}_{\alpha}(\hat{f}(X))}$",
                 "diff_tail/es": r"$\frac{\|\hat f - \bar f\|_{L^2(\hat \nu_\alpha)}}{\mathrm{ES}_{\alpha}(\hat{f}(X))}$",
+                "diff_nu_cb/es": r"$\frac{95\%\text{CB}\|\hat f - \bar f\|_{L^2(\nu)}}{\mathrm{ES}_{\alpha}(\hat{f}(X))}$",
                 "diff_nu/true_f": r"$\frac{\|\hat f - \bar f\|_{L^2(\nu)}}{\|\bar f\|_{L^2(\nu)}}$",
-                "diff_tail/true_f_tail": r"$\frac{\|\hat f - \bar f\|_{L^2(\hat \nu_\alpha)}}{\|\bar f\|_{L^2(\hat \nu_\alpha)}}$"} 
+                "diff_tail_cb/es": r"$\frac{95\%\text{CB}\|\hat f - \bar f\|_{L^2(\hat \nu_\alpha)}}{\mathrm{ES}_{\alpha}(\hat{f}(X))}$",
+                "diff_tail/true_f_tail": r"$\frac{\|\hat f - \bar f\|_{L^2(\hat \nu_\alpha)}}{\|\bar f\|_{L^2(\hat \nu_\alpha)}}$"}     
     df = df.rename(columns=to_latex)
     colfmt = "l" + "c" * len(df.columns) 
+
     
     # removing under scors 
     label = "portfolio" if experiment_type == "portfolio" else "max call"   
     if importance_sampling:
         caption = f"{label} with importance sampling."
+        ref = f'table:{experiment_type}_with_is'
     else:
         caption = f"{label} without importance sampling."
+        ref = f'table:{experiment_type}_no_is'
     latex_str = df.to_latex(float_format="%.4f", escape=False, index_names=False, column_format=colfmt)            
     # add centering to the table 
-    latex_str = ("\\begin{table}[ht]\n"
+    latex_str = ("\\begin{table}[htbp]\n"
     "\\centering\n" +
     latex_str +
     f"\\caption{{{caption}}}\n"
+    f"\\label{{{ref}}}\n"
     "\\end{table}\n")
     file_name = f"results/{name}.tex" 
     with open(file_name, "w") as f:
