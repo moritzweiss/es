@@ -11,9 +11,9 @@ config = PortfolioConfig()
 sampler = DataSampler(config, device=torch.device("cuda:0"), dtype=torch.float32,  seed=42)
 
 alpha = 0.99
-sampling_alpha = 0.7
+sampling_alpha = 0.8
 
-n_samples = int(2e6)
+n_samples = int(1e6)
 X, _ = sampler.sampleX(importance_sampling=False, alpha=sampling_alpha, n_samples=n_samples)
 Y = sampler.sampleY(initial_value=X)
 Y, _ = torch.sort(Y, dim=-1, descending=True)
@@ -59,13 +59,13 @@ plt.title('Density Plot of Y ')
 
 # %%
 config = MaxCallConfig()
-sampler = DataSampler(config, device=torch.device("cuda:0"), dtype=torch.float32,  seed=42)
+sampler = DataSampler(config, device=torch.device("cuda:1"), dtype=torch.float32,  seed=42)
 
 
 alpha = 0.99
 sampling_alpha = 0.99
 
-n_samples = int(2e6)
+n_samples = int(1e6)
 X, _ = sampler.sampleX(importance_sampling=False, alpha=sampling_alpha, n_samples=n_samples)
 Y = sampler.sampleY(initial_value=X)
 Y, _ = torch.sort(Y, dim=-1, descending=True)
@@ -91,8 +91,6 @@ print(f"Expected Shortfall with IS: {ex_is:.4f}")
 
 print(f'value at risk without IS: {Y[j]:.4f}')
 print(f'value at risk with IS: {Y_is[j_is]:.4f}')
-
-
 
 
 Y = Y.cpu().numpy() if torch.is_tensor(Y) else Y
