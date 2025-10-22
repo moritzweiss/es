@@ -11,6 +11,8 @@ import pandas as pd
 from expected_shortfall import expected_shortfall
 from helper_functions import norm_estimate, compute_estimates, write_to_latex_table, DeepNeuralNet, Regression
 
+
+
 @dataclass
 class PortfolioConfig:
     name: str = "portfolio"
