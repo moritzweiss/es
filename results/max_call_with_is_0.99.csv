@@ -1,4 +1,3 @@
-model,es,diff_nu/es,diff_tail/es,diff_nu/true_f,diff_tail/true_f_tail
-Linear,2.90,0.05,0.02,0.10,0.04
-Poly,2.87,0.03,0.02,0.06,0.04
-NN,2.85,0.01,0.02,0.02,0.03
+,es,relative_error_nu/es,confidence_bound_nu/es,relative_error_tail/es,confidence_bound_tail/es,relative_error_true_nu/true_f,relative_error_true_tail/true_f_tail
+Linear,2.90,0.07,0.07,0.02,0.03,0.13,0.02
+Poly,2.87,0.04,0.05,0.02,0.03,0.08,0.02

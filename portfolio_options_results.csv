@@ -1,4 +1,0 @@
-model,expected_shortfall,norm,tail_norm
-Linear,95.52,0.06,0.06
-Poly,94.71,0.06,0.05
-DNN,105.54,0.01,-0.03
