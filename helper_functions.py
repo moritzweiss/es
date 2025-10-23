@@ -65,7 +65,7 @@ def estimates(predictions: torch.Tensor, y: torch.Tensor, z: torch.Tensor, sampl
     return es, norm_diff_nu/es, norm_diff_tail/es, norm_diff_nu/norm_true_nu, norm_diff_tail/norm_true_tail 
 
 def evaluation_samples(DS, model, eval_seed, eval_samples, alpha, importance_sampling, on_cpu=False):
-    samples_per_batch = int(1e6)
+    samples_per_batch = int(5e5)
     n_batches = int(eval_samples/samples_per_batch)
     DS.set_seed(eval_seed)
     all_X = []
@@ -101,6 +101,7 @@ def evaluation_samples(DS, model, eval_seed, eval_samples, alpha, importance_sam
     all_Z = all_Z[sort_idx]
     all_outputs = all_outputs[sort_idx]
     all_sampling_weights = all_sampling_weights[sort_idx]
+    print(f'total number of evaluation samples: {all_X.shape[0]}')
     return all_X, all_Y, all_Z, all_outputs, all_sampling_weights
 
 def compute_estimates(DS, model, eval_samples, eval_seed, alpha, sampling_alpha, importance_sampling, on_cpu=True):
@@ -220,7 +221,7 @@ class DeepNeuralNet(nn.Module):
     def __init__(self, n_features=20, experiment_type="max_call"):
         super().__init__()
 
-        assert experiment_type in ["max_call", "portfolio"], "Experiment type not recognized."
+        assert experiment_type in ["max_call", "portfolio", "variable_annuity"], "Experiment type not recognized."
 
         if experiment_type == "max_call":
             self.net = nn.Sequential(
@@ -248,6 +249,18 @@ class DeepNeuralNet(nn.Module):
             nn.GELU(),
             # nn.Tanh(),
             nn.Linear(hidden_layer, 1)
+            )
+
+        elif experiment_type == "variable_annuity":
+            # 256 - 256 
+            self.net = nn.Sequential(
+                nn.Linear(n_features, 256),
+                nn.BatchNorm1d(256),
+                nn.ReLU(),
+                nn.Linear(256, 256),
+                nn.BatchNorm1d(256),
+                nn.ReLU(),
+                nn.Linear(256, 1),
             )
 
     def forward(self, x):
